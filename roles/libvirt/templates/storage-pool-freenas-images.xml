@@ -1,0 +1,18 @@
+<pool xmlns:fs="http://libvirt.org/schemas/storagepool/fs/1.0" type="netfs">
+  <name>freenas-images</name>
+  <source>
+    <host name="freenas.rmb938.me"/>
+    <dir path="/mnt/tank/vms/images"/>
+    <format type="auto"/>
+  </source>
+  <target>
+    <path>/var/lib/libvirt/freenas-images</path>
+  </target>
+  <fs:mount_opts>
+    <fs:option name="sync"/>
+    <fs:option name="noacl"/>
+    <fs:option name="noatime"/>
+    <fs:option name="nodiratime"/>
+    <fs:option name="noac"/>
+  </fs:mount_opts>
+</pool>

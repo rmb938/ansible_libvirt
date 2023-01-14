@@ -1,0 +1,105 @@
+- name: INSTALL UTILS
+  ansible.builtin.dnf:
+    name:
+      - htop
+      - python3-lxml # required for libvirt ansible module
+    state: present
+
+- name: DISABLE TRANSPARENT HUGEPAGES
+  ansible.builtin.shell:
+    cmd: /usr/bin/echo never > /sys/kernel/mm/transparent_hugepage/enabled
+
+- name: PERSIST DISABLE TRANSPARENT HUGEPAGES
+  ansible.builtin.command:
+    cmd: /usr/sbin/grubby --args="transparent_hugepage=never" --update-kernel=ALL
+
+- name: DISABLE QUIET BOOT
+  ansible.builtin.command:
+    cmd: /usr/sbin/grubby --remove-args="rhgb quiet" --update-kernel=ALL
+
+- name: LOAD REQUIRED MODULES
+  community.general.modprobe:
+    name: br_netfilter
+    state: present
+
+- name: PERSIST REQUIRED MODULES
+  ansible.builtin.copy:
+    content: |
+      # This file is managed by ansible
+      br_netfilter
+    dest: /etc/modules-load.d/virtio-net.conf
+
+- name: SET SYSCTL SETTINGS
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_set: yes
+  with_items:
+    # bridge netfilter
+    - { name: "net.bridge.bridge-nf-call-ip6tables", value: "0" }
+    - { name: "net.bridge.bridge-nf-call-iptables", value: "0" }
+    - { name: "net.bridge.bridge-nf-call-arptables", value: "0" }
+    # hugepages
+    - { name: "vm.hugetlb_shm_group", value: "36" }
+    - {
+        name: "vm.nr_hugepages",
+        # Total memory minus 4gb for the host, divide by 2 for 2mb hubepages
+        value: "{{ ((ansible_memtotal_mb-4096)/2)|round|int }}",
+      }
+
+- name: INSTALL VIRTUALIZATION
+  ansible.builtin.dnf:
+    name: "@virtualization"
+    state: present
+
+- name: ENABLE AND START LIBVIRT
+  ansible.builtin.systemd:
+    state: started
+    enabled: yes
+    name: libvirtd
+
+- name: CREATE FOLDER FOR STORAGE POOL FOR VM IMAGES
+  ansible.builtin.file:
+    path: /var/lib/libvirt/freenas-images
+    state: directory
+
+- name: DEFINE STORAGE POOL FOR VM IMAGES
+  community.libvirt.virt_pool:
+    command: define
+    xml: "{{ lookup('template', 'storage-pool-freenas-images.xml') }}"
+    name: freenas-images
+
+- name: ACTIVATE STORAGE POOL FOR VM IMAGES
+  community.libvirt.virt_pool:
+    state: active
+    autostart: yes
+    name: freenas-images
+
+- name: CREATE FOLDER FOR STORAGE POOL FOR VM VOLUMES
+  ansible.builtin.file:
+    path: /var/lib/libvirt/freenas-volumes
+    state: directory
+
+- name: DEFINE STORAGE POOL FOR VM VOLUMES
+  community.libvirt.virt_pool:
+    command: define
+    xml: "{{ lookup('template', 'storage-pool-freenas-volumes.xml') }}"
+    name: freenas-volumes
+
+- name: ACTIVATE STORAGE POOL FOR VM VOLUMES
+  community.libvirt.virt_pool:
+    state: active
+    autostart: yes
+    name: freenas-volumes
+
+- name: DEFINE BRIDGE NETWORK FOR VMS
+  community.libvirt.virt_net:
+    command: define
+    xml: "{{ lookup('template', 'bridged-network.xml') }}"
+    name: bridged-network
+
+- name: ACTIVATE BRIDGE NETWORK FOR VMS
+  community.libvirt.virt_net:
+    state: active
+    autostart: yes
+    name: bridged-network
